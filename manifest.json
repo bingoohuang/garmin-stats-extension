@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "102",
+  "name": "Garmin 运动统计",
+  "version": "1.2.1",
+  "description": "在 Chrome 工具栏快速查看 Garmin Connect China 的跑步与骑行周/月统计。",
+  "action": {
+    "default_title": "Garmin 运动统计",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://connect.garmin.cn/app/*"],
+      "js": ["activity-widget.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/icon32.png", "icons/icon48.png"],
+      "matches": ["https://connect.garmin.cn/*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://connect.garmin.cn/*"
+  ]
+}
