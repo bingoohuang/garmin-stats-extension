@@ -6,12 +6,13 @@ import {
   SPORTS,
 } from "./lib/stats.js";
 
+const SPORT_ORDER = Object.keys(SPORTS);
 const state = {
-  sport: "running",
+  sports: ["running"],
   period: "month",
-  chartMetric: "distance",
+  chartMetrics: Object.fromEntries(SPORT_ORDER.map((sport) => [sport, "distance"])),
   requestId: 0,
-  renderedView: null,
+  results: new Map(),
 };
 
 const elements = {
@@ -19,7 +20,6 @@ const elements = {
   appShell: document.querySelector(".app-shell"),
   sportControl: document.querySelector("#sportControl"),
   periodControl: document.querySelector("#periodControl"),
-  chartMode: document.querySelector("#chartMode"),
   refreshButton: document.querySelector("#refreshButton"),
   retryButton: document.querySelector("#retryButton"),
   loginButton: document.querySelector("#loginButton"),
@@ -30,25 +30,23 @@ const elements = {
   errorTitle: document.querySelector("#errorTitle"),
   errorMessage: document.querySelector("#errorMessage"),
   periodTitle: document.querySelector("#periodTitle"),
-  totalDistance: document.querySelector("#totalDistance"),
-  distanceMetric: document.querySelector("#distanceMetric"),
-  countMetric: document.querySelector("#countMetric"),
-  activityMeta: document.querySelector("#activityMeta"),
-  durationMetric: document.querySelector("#durationMetric"),
-  paceMetricLabel: document.querySelector("#paceMetricLabel"),
-  paceMetric: document.querySelector("#paceMetric"),
-  paceMetricUnit: document.querySelector("#paceMetricUnit"),
-  elevationMetric: document.querySelector("#elevationMetric"),
-  averageDistanceMetric: document.querySelector("#averageDistanceMetric"),
-  averageDurationMetric: document.querySelector("#averageDurationMetric"),
-  chartTitle: document.querySelector("#chartTitle"),
-  chartSubtitle: document.querySelector("#chartSubtitle"),
-  peakLegend: document.querySelector("#peakLegend"),
-  barChart: document.querySelector("#barChart"),
-  chartDetail: document.querySelector("#chartDetail"),
-  emptyMessage: document.querySelector("#emptyMessage"),
-  warningBanner: document.querySelector("#warningBanner"),
+  statsGrid: document.querySelector("#statsGrid"),
 };
+
+function normalizeSports(preferences = {}) {
+  const storedSports = Array.isArray(preferences.sports)
+    ? preferences.sports.filter((sport) => SPORTS[sport])
+    : [];
+  const uniqueSports = SPORT_ORDER.filter((sport) => storedSports.includes(sport));
+  if (uniqueSports.length > 0) {
+    return uniqueSports;
+  }
+  return SPORTS[preferences.sport] ? [preferences.sport] : ["running"];
+}
+
+function resultKey(sport, period = state.period) {
+  return `${sport}:${period}`;
+}
 
 function setView(view) {
   elements.loadingView.hidden = view !== "loading";
@@ -63,20 +61,38 @@ function setBusy(isBusy) {
 }
 
 function syncControls() {
-  elements.body.dataset.sport = state.sport;
+  const columnCount = String(state.sports.length);
+  elements.body.dataset.columnCount = columnCount;
+  document.documentElement.dataset.columnCount = columnCount;
+  elements.statsGrid.style.setProperty("--column-count", columnCount);
+  elements.loadingView.style.setProperty("--column-count", columnCount);
   elements.sportControl.querySelectorAll("button").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.sport === state.sport));
+    const isSelected = state.sports.includes(button.dataset.sport);
+    button.setAttribute("aria-pressed", String(isSelected));
+    button.disabled = isSelected && state.sports.length === 1;
   });
   elements.periodControl.querySelectorAll("button").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.period === state.period));
   });
 }
 
+function renderLoading() {
+  elements.loadingView.replaceChildren();
+  for (const sport of state.sports) {
+    const card = document.createElement("div");
+    card.className = "loading-card";
+    card.dataset.sport = sport;
+    card.innerHTML = '<div class="skeleton skeleton-total"></div><div class="skeleton skeleton-chart"></div><div class="skeleton skeleton-metrics"></div>';
+    elements.loadingView.append(card);
+  }
+}
+
 function formatPeriodTitle(summary) {
   const start = new Date(`${summary.range.startDate}T00:00:00`);
   const end = new Date(`${summary.range.endDate}T00:00:00`);
   const prefix = summary.period === "month" ? "本月" : "本周";
-  const short = (date) => `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  const short = (date) =>
+    `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
   return `${prefix} ${short(start)}–${short(end)}`;
 }
 
@@ -93,7 +109,7 @@ function formatFullDay(dateKey) {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-function shouldShowDayLabel(index, day, period, dayCount) {
+function shouldShowDayLabel(day, period, dayCount) {
   if (period === "week") {
     return true;
   }
@@ -101,61 +117,75 @@ function shouldShowDayLabel(index, day, period, dayCount) {
   return dayOfMonth === 1 || dayOfMonth === dayCount || dayOfMonth % 5 === 0;
 }
 
-function setChartDetail(day) {
+function setChartDetail(column, day, metric) {
   const countText = day.isFuture ? "尚未开始" : day.count > 0 ? `${day.count} 次` : "无活动";
-  const value = state.chartMetric === "duration"
+  const value = metric === "duration"
     ? formatDuration(day.durationSeconds)
     : `${formatDistance(day.distanceKm)} km`;
-  elements.chartDetail.textContent = `${formatFullDay(day.dateKey)} · ${value} · ${countText}`;
+  column.querySelector("[data-role='chart-detail']").textContent =
+    `${formatFullDay(day.dateKey)} · ${value} · ${countText}`;
 }
 
-function renderChart(summary) {
+function renderChart(column, summary) {
+  const metric = state.chartMetrics[summary.sport];
+  const chart = column.querySelector("[data-role='bar-chart']");
   const values = summary.daily.map((day) =>
-    state.chartMetric === "duration" ? day.durationSeconds : day.distanceKm,
+    metric === "duration" ? day.durationSeconds : day.distanceKm,
   );
   const maxValue = Math.max(0, ...values);
   const dayCount = summary.daily.length;
-  elements.barChart.replaceChildren();
-  elements.barChart.style.setProperty("--day-count", String(dayCount));
-  elements.barChart.style.setProperty("--chart-gap", summary.period === "week" ? "8px" : "3px");
-  elements.peakLegend.hidden = false;
-  elements.peakLegend.textContent = state.chartMetric === "duration" ? "单位：小时" : "单位：公里";
-  elements.chartTitle.textContent = state.chartMetric === "duration" ? "每日运动时长" : state.sport === "running" ? "每日跑量" : "每日骑行距离";
+  chart.replaceChildren();
+  chart.style.setProperty("--day-count", String(dayCount));
+  chart.style.setProperty("--chart-gap", summary.period === "week" ? "8px" : "3px");
+  column.querySelector("[data-role='unit-label']").textContent =
+    metric === "duration" ? "单位：小时" : "单位：公里";
+  column.querySelector("[data-role='chart-title']").textContent =
+    metric === "duration"
+      ? "每日运动时长"
+      : summary.sport === "running"
+        ? "每日跑量"
+        : "每日骑行距离";
+  column.querySelectorAll("[data-metric]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.metric === metric));
+  });
 
-  const todayDay = summary.daily.find((day) => day.dateKey === summary.range.today && !day.isFuture);
-  let selectedDay = todayDay;
-  if (!selectedDay || selectedDay.count === 0) {
-    selectedDay = [...summary.daily].reverse().find((day) => day.count > 0) ?? todayDay ?? summary.daily[0];
-  }
+  const todayDay = summary.daily.find(
+    (day) => day.dateKey === summary.range.today && !day.isFuture,
+  );
+  const selectedDay =
+    (todayDay?.count > 0 ? todayDay : null) ??
+    [...summary.daily].reverse().find((day) => day.count > 0) ??
+    todayDay ??
+    summary.daily[0];
 
   const selectDay = (index, shouldFocus = false) => {
     const day = summary.daily[index];
-    const item = elements.barChart.children[index];
+    const item = chart.children[index];
     if (!day || !item) {
       return;
     }
-    elements.barChart.querySelectorAll(".is-selected").forEach((element) => {
+    chart.querySelectorAll(".is-selected").forEach((element) => {
       element.classList.remove("is-selected");
       element.setAttribute("aria-selected", "false");
     });
     item.classList.add("is-selected");
     item.setAttribute("aria-selected", "true");
-    elements.barChart.setAttribute("aria-activedescendant", item.id);
-    elements.barChart.dataset.selectedIndex = String(index);
-    setChartDetail(day);
+    chart.setAttribute("aria-activedescendant", item.id);
+    chart.dataset.selectedIndex = String(index);
+    setChartDetail(column, day, metric);
     if (shouldFocus) {
-      elements.barChart.focus();
+      chart.focus();
     }
   };
 
   summary.daily.forEach((day, index) => {
     const item = document.createElement("div");
-    item.id = `chart-day-${day.dateKey}`;
+    item.id = `chart-day-${summary.sport}-${day.dateKey}`;
     item.className = "bar-day";
     item.setAttribute("role", "option");
     item.setAttribute("aria-selected", "false");
     item.dataset.label = formatDayLabel(day.dateKey, summary.period);
-    item.dataset.showLabel = String(shouldShowDayLabel(index, day, summary.period, dayCount));
+    item.dataset.showLabel = String(shouldShowDayLabel(day, summary.period, dayCount));
     item.classList.toggle("is-zero", day.count === 0);
     item.classList.toggle("is-future", day.isFuture);
     item.classList.toggle(
@@ -164,7 +194,7 @@ function renderChart(summary) {
     );
     item.setAttribute(
       "aria-label",
-      `${formatFullDay(day.dateKey)}，${state.chartMetric === "duration" ? formatDuration(day.durationSeconds) : `${formatDistance(day.distanceKm)} 公里`}，${day.count} 次活动`,
+      `${formatFullDay(day.dateKey)}，${metric === "duration" ? formatDuration(day.durationSeconds) : `${formatDistance(day.distanceKm)} 公里`}，${day.count} 次活动`,
     );
     item.title = `${formatFullDay(day.dateKey)} · ${formatDistance(day.distanceKm)} km · ${day.count} 次`;
 
@@ -173,13 +203,13 @@ function renderChart(summary) {
     const percentage = maxValue > 0 ? (values[index] / maxValue) * 100 : 0;
     rect.style.setProperty("--bar-height", `${Math.max(day.count > 0 ? 6 : 2, percentage)}%`);
     item.append(rect);
-    item.addEventListener("mouseenter", () => setChartDetail(day));
+    item.addEventListener("mouseenter", () => setChartDetail(column, day, metric));
     item.addEventListener("mouseleave", () => {
-      const selectedIndex = Number(elements.barChart.dataset.selectedIndex);
-      setChartDetail(summary.daily[selectedIndex] ?? day);
+      const selectedIndex = Number(chart.dataset.selectedIndex);
+      setChartDetail(column, summary.daily[selectedIndex] ?? day, metric);
     });
     item.addEventListener("click", () => selectDay(index, true));
-    elements.barChart.append(item);
+    chart.append(item);
   });
 
   if (selectedDay) {
@@ -187,57 +217,94 @@ function renderChart(summary) {
   }
 }
 
-elements.barChart.addEventListener("keydown", (event) => {
-  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
-    return;
-  }
-  event.preventDefault();
-  const lastIndex = elements.barChart.children.length - 1;
-  const currentIndex = Number(elements.barChart.dataset.selectedIndex || 0);
-  let nextIndex = currentIndex;
-  if (event.key === "ArrowLeft") nextIndex = Math.max(0, currentIndex - 1);
-  if (event.key === "ArrowRight") nextIndex = Math.min(lastIndex, currentIndex + 1);
-  if (event.key === "Home") nextIndex = 0;
-  if (event.key === "End") nextIndex = lastIndex;
-  elements.barChart.children[nextIndex]?.click();
-});
-
-function renderData(result) {
+function createSportColumn(result, warning = "") {
   const { summary } = result;
-  elements.periodTitle.textContent = formatPeriodTitle(summary);
-  elements.totalDistance.textContent = formatDistance(summary.totalDistanceKm);
-  elements.activityMeta.textContent = `累计${SPORTS[summary.sport].label} · ${summary.activeDays} 个运动日`;
-  elements.distanceMetric.textContent = formatDistance(summary.totalDistanceKm);
-  elements.countMetric.textContent = String(summary.count);
-  elements.durationMetric.textContent = formatDuration(summary.totalDurationSeconds);
-  elements.elevationMetric.textContent = Math.round(summary.elevationGain).toLocaleString("zh-CN");
-  elements.averageDistanceMetric.textContent = formatDistance(
-    summary.count > 0 ? summary.totalDistanceKm / summary.count : 0,
-  );
-  elements.averageDurationMetric.textContent = formatDuration(
-    summary.count > 0 ? summary.totalDurationSeconds / summary.count : 0,
-  );
-
   const isRunning = summary.sport === "running";
-  elements.paceMetricLabel.textContent = isRunning ? "平均配速" : "平均速度";
-  elements.paceMetric.textContent = isRunning
-    ? formatPace(summary.averagePaceSecondsPerKm)
-    : formatSpeed(summary.averageSpeedKmh);
-  elements.paceMetricUnit.textContent = isRunning ? "/km" : "km/h";
+  const averageDistance = summary.count > 0 ? summary.totalDistanceKm / summary.count : 0;
+  const averageDuration = summary.count > 0 ? summary.totalDurationSeconds / summary.count : 0;
   const periodText = summary.period === "month" ? "按自然月统计" : "周一至周日";
-  const updateTime = new Date(result.fetchedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  elements.chartSubtitle.textContent = `${periodText} · 更新于 ${updateTime}`;
-  elements.emptyMessage.hidden = summary.count !== 0;
-  elements.emptyMessage.textContent = `本${summary.period === "month" ? "月" : "周"}暂无${SPORTS[summary.sport].label}记录`;
-  elements.connectionStatus.textContent =
-    result.source === "garmin-tab"
-      ? "Garmin Connect China · 活动页已连接"
-      : "Garmin Connect China · 已连接";
-  elements.warningBanner.hidden = true;
-  elements.warningBanner.textContent = "";
+  const updateTime = new Date(result.fetchedAt).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const column = document.createElement("article");
+  column.className = "sport-column";
+  column.dataset.sport = summary.sport;
+  column.setAttribute("aria-label", `${SPORTS[summary.sport].label}统计`);
+  column.innerHTML = `
+    <section class="stats-card">
+      <div class="sport-column-heading"><span></span><h2>${SPORTS[summary.sport].label}统计</h2></div>
+      <div class="summary-row">
+        <div class="summary">
+          <div class="distance-line"><strong>${formatDistance(summary.totalDistanceKm)}</strong><span>公里</span></div>
+          <p class="summary-meta">累计${SPORTS[summary.sport].label} · ${summary.activeDays} 个运动日</p>
+        </div>
+        <div class="chart-mode" role="group" aria-label="${SPORTS[summary.sport].label}图表指标">
+          <button type="button" data-metric="distance">里程</button>
+          <button type="button" data-metric="duration">时长</button>
+        </div>
+      </div>
+      <div class="chart-heading"><div><h2 data-role="chart-title"></h2><p>${periodText} · 更新于 ${updateTime}</p></div><span data-role="unit-label" class="unit-label"></span></div>
+      <div data-role="bar-chart" class="bar-chart" role="listbox" aria-orientation="horizontal" tabindex="0" aria-label="${SPORTS[summary.sport].label}每日运动数据图，使用左右方向键查看日期"></div>
+      <div data-role="chart-detail" class="chart-detail" aria-live="polite"></div>
+      <p class="comparison-title">累计数据</p>
+      <section class="cumulative-grid" aria-label="${SPORTS[summary.sport].label}累计指标">
+        <div class="cumulative"><span>累计里程（公里）</span><strong>${formatDistance(summary.totalDistanceKm)}</strong></div>
+        <div class="cumulative"><span>累计运动（次）</span><strong>${summary.count}</strong></div>
+        <div class="cumulative"><span>累计时长</span><strong>${formatDuration(summary.totalDurationSeconds)}</strong></div>
+        <div class="cumulative"><span>累计爬升（米）</span><strong>${Math.round(summary.elevationGain).toLocaleString("zh-CN")}</strong></div>
+      </section>
+    </section>
+    <h2 class="section-title"><span></span>运动表现</h2>
+    <section class="performance-card" aria-label="${SPORTS[summary.sport].label}周期表现">
+      <div class="performance-tabs"><span>${isRunning ? "平均配速" : "平均速度"}</span><span>平均距离</span><span>平均时长</span></div>
+      <div class="performance-values">
+        <div><small>本期平均</small><strong>${isRunning ? formatPace(summary.averagePaceSecondsPerKm) : formatSpeed(summary.averageSpeedKmh)}</strong><span>${isRunning ? "/km" : "km/h"}</span></div>
+        <div><small>单次平均</small><strong>${formatDistance(averageDistance)}</strong><span>km</span></div>
+        <div><small>单次平均</small><strong>${formatDuration(averageDuration)}</strong></div>
+      </div>
+    </section>
+    <p class="empty-message" ${summary.count === 0 ? "" : "hidden"}>本${summary.period === "month" ? "月" : "周"}暂无${SPORTS[summary.sport].label}记录</p>
+    <div class="warning-banner" role="status" ${warning ? "" : "hidden"}></div>`;
+  column.querySelector(".warning-banner").textContent = warning;
+  renderChart(column, summary);
+  return column;
+}
 
-  renderChart(summary);
-  state.renderedView = `${summary.sport}:${summary.period}`;
+function createErrorColumn(sport, error) {
+  const column = document.createElement("article");
+  column.className = "sport-column";
+  column.dataset.sport = sport;
+  const errorView = document.createElement("section");
+  errorView.className = "column-error";
+  const title = document.createElement("h2");
+  title.textContent = `${SPORTS[sport].label}数据读取失败`;
+  const message = document.createElement("p");
+  message.textContent = error?.message || "请稍后刷新重试。";
+  errorView.append(title, message);
+  column.append(errorView);
+  return column;
+}
+
+function renderResults(entries) {
+  elements.statsGrid.replaceChildren();
+  elements.statsGrid.style.setProperty("--column-count", String(state.sports.length));
+  for (const entry of entries) {
+    elements.statsGrid.append(
+      entry.result
+        ? createSportColumn(entry.result, entry.warning)
+        : createErrorColumn(entry.sport, entry.error),
+    );
+  }
+
+  const firstResult = entries.find((entry) => entry.result)?.result;
+  if (firstResult) {
+    elements.periodTitle.textContent = formatPeriodTitle(firstResult.summary);
+  }
+  const connectedViaTab = entries.some((entry) => entry.result?.source === "garmin-tab");
+  elements.connectionStatus.textContent = connectedViaTab
+    ? "Garmin Connect China · 活动页已连接"
+    : "Garmin Connect China · 已连接";
   setView("data");
 }
 
@@ -268,54 +335,59 @@ function renderError(error) {
   elements.errorView.focus();
 }
 
+async function requestSport(sport, force) {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "GARMIN_STATS_GET",
+      payload: { sport, period: state.period, force },
+    });
+    return response?.ok
+      ? { sport, result: response.data }
+      : { sport, error: response?.error || { message: "读取 Garmin 数据失败" } };
+  } catch (error) {
+    return { sport, error: { message: error?.message || "扩展后台服务未响应" } };
+  }
+}
+
 async function requestStats(force = false) {
   const requestId = ++state.requestId;
+  const requestedSports = [...state.sports];
   setBusy(true);
   if (!force) {
+    renderLoading();
     setView("loading");
   }
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: "GARMIN_STATS_GET",
-      payload: {
-        sport: state.sport,
-        period: state.period,
-        force,
-      },
-    });
+    const entries = await Promise.all(
+      requestedSports.map((sport) => requestSport(sport, force)),
+    );
     if (requestId !== state.requestId) {
       return;
     }
-    if (!response?.ok) {
-      const canKeepCurrent =
-        force &&
-        response?.error?.code !== "AUTH_REQUIRED" &&
-        state.renderedView === `${state.sport}:${state.period}`;
-      if (canKeepCurrent) {
-        elements.warningBanner.textContent = `${response?.error?.message || "刷新失败"}，当前数据未更新`;
-        elements.warningBanner.hidden = false;
-        elements.connectionStatus.textContent = "Garmin Connect China · 刷新失败";
-        setView("data");
-      } else {
-        renderError(response?.error);
+
+    const displayEntries = entries.map((entry) => {
+      if (entry.result) {
+        state.results.set(resultKey(entry.sport), entry.result);
+        return entry;
       }
+      const cachedResult = state.results.get(resultKey(entry.sport));
+      const canKeepCurrent =
+        force && cachedResult && entry.error?.code !== "AUTH_REQUIRED";
+      return canKeepCurrent
+        ? {
+            sport: entry.sport,
+            result: cachedResult,
+            warning: `${entry.error?.message || "刷新失败"}，当前数据未更新`,
+          }
+        : entry;
+    });
+
+    if (displayEntries.every((entry) => !entry.result)) {
+      renderError(displayEntries[0]?.error);
       return;
     }
-    renderData(response.data);
-  } catch (error) {
-    if (requestId === state.requestId) {
-      const canKeepCurrent =
-        force && state.renderedView === `${state.sport}:${state.period}`;
-      if (canKeepCurrent) {
-        elements.warningBanner.textContent = `${error?.message || "扩展后台服务未响应"}，当前数据未更新`;
-        elements.warningBanner.hidden = false;
-        elements.connectionStatus.textContent = "Garmin Connect China · 刷新失败";
-        setView("data");
-      } else {
-        renderError({ message: error?.message || "扩展后台服务未响应" });
-      }
-    }
+    renderResults(displayEntries);
   } finally {
     if (requestId === state.requestId) {
       setBusy(false);
@@ -326,7 +398,8 @@ async function requestStats(force = false) {
 async function savePreferences() {
   await chrome.storage.local.set({
     preferences: {
-      sport: state.sport,
+      sports: state.sports,
+      sport: state.sports[0],
       period: state.period,
     },
   });
@@ -341,9 +414,20 @@ async function selectView(nextState) {
 
 elements.sportControl.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-sport]");
-  if (button && button.dataset.sport !== state.sport) {
-    selectView({ sport: button.dataset.sport });
+  if (!button) {
+    return;
   }
+  const sport = button.dataset.sport;
+  const isSelected = state.sports.includes(sport);
+  if (isSelected && state.sports.length === 1) {
+    return;
+  }
+  const sports = isSelected
+    ? state.sports.filter((selectedSport) => selectedSport !== sport)
+    : SPORT_ORDER.filter((availableSport) =>
+        [...state.sports, sport].includes(availableSport),
+      );
+  selectView({ sports });
 });
 
 elements.periodControl.addEventListener("click", (event) => {
@@ -353,14 +437,37 @@ elements.periodControl.addEventListener("click", (event) => {
   }
 });
 
-elements.chartMode.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-metric]");
-  if (!button || button.dataset.metric === state.chartMetric) return;
-  state.chartMetric = button.dataset.metric;
-  elements.chartMode.querySelectorAll("button").forEach((item) => {
-    item.setAttribute("aria-pressed", String(item === button));
-  });
-  requestStats(false);
+elements.statsGrid.addEventListener("click", (event) => {
+  const metricButton = event.target.closest("button[data-metric]");
+  if (!metricButton) {
+    return;
+  }
+  const column = metricButton.closest(".sport-column");
+  const sport = column?.dataset.sport;
+  if (!sport || metricButton.dataset.metric === state.chartMetrics[sport]) {
+    return;
+  }
+  state.chartMetrics[sport] = metricButton.dataset.metric;
+  const result = state.results.get(resultKey(sport));
+  if (result) {
+    renderChart(column, result.summary);
+  }
+});
+
+elements.statsGrid.addEventListener("keydown", (event) => {
+  const chart = event.target.closest(".bar-chart");
+  if (!chart || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    return;
+  }
+  event.preventDefault();
+  const lastIndex = chart.children.length - 1;
+  const currentIndex = Number(chart.dataset.selectedIndex || 0);
+  let nextIndex = currentIndex;
+  if (event.key === "ArrowLeft") nextIndex = Math.max(0, currentIndex - 1);
+  if (event.key === "ArrowRight") nextIndex = Math.min(lastIndex, currentIndex + 1);
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = lastIndex;
+  chart.children[nextIndex]?.click();
 });
 
 elements.refreshButton.addEventListener("click", () => requestStats(true));
@@ -369,9 +476,7 @@ elements.retryButton.addEventListener("click", () => requestStats(true));
 async function init() {
   const stored = await chrome.storage.local.get("preferences");
   const preferences = stored.preferences ?? {};
-  if (SPORTS[preferences.sport]) {
-    state.sport = preferences.sport;
-  }
+  state.sports = normalizeSports(preferences);
   if (["month", "week"].includes(preferences.period)) {
     state.period = preferences.period;
   }

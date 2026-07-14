@@ -6,7 +6,7 @@
     <title>Garmin 运动统计</title>
     <link rel="stylesheet" href="popup.css">
   </head>
-  <body data-sport="running">
+  <body data-column-count="1">
     <main class="app-shell" aria-busy="true">
       <header class="topbar">
         <div class="brand-block">
@@ -25,14 +25,14 @@
 
       <section class="context-row" aria-label="统计筛选">
         <div class="sport-select" id="sportControl" role="group" aria-label="运动类型">
-          <button type="button" data-sport="running" aria-pressed="true">跑步 <span>▾</span></button>
+          <button type="button" data-sport="running" aria-pressed="true">跑步</button>
           <button type="button" data-sport="cycling" aria-pressed="false">骑行</button>
         </div>
         <p id="periodTitle" class="range-label"></p>
       </section>
 
       <section id="loadingView" class="loading-view" role="status" aria-label="正在加载" aria-live="polite">
-        <div class="skeleton skeleton-total"></div><div class="skeleton skeleton-chart"></div><div class="skeleton skeleton-metrics"></div>
+        <div class="loading-card"><div class="skeleton skeleton-total"></div><div class="skeleton skeleton-chart"></div><div class="skeleton skeleton-metrics"></div></div>
       </section>
 
       <section id="errorView" class="state-view" role="alert" aria-live="assertive" tabindex="-1" hidden>
@@ -42,43 +42,7 @@
       </section>
 
       <div id="dataView" hidden>
-        <section class="stats-card" aria-labelledby="chartTitle">
-          <div class="summary-row">
-            <div class="summary">
-              <div class="distance-line"><strong id="totalDistance">0.0</strong><span>公里</span></div>
-              <p id="activityMeta" class="summary-meta"></p>
-            </div>
-            <div class="chart-mode" id="chartMode" role="group" aria-label="图表指标">
-              <button type="button" data-metric="distance" aria-pressed="true">里程</button>
-              <button type="button" data-metric="duration" aria-pressed="false">时长</button>
-            </div>
-          </div>
-
-          <div class="chart-heading"><div><h2 id="chartTitle">每日跑量</h2><p id="chartSubtitle"></p></div><span id="peakLegend" class="unit-label">单位：公里</span></div>
-          <div id="barChart" class="bar-chart" role="listbox" aria-orientation="horizontal" tabindex="0" aria-label="每日运动数据图，使用左右方向键查看日期"></div>
-          <div id="chartDetail" class="chart-detail" aria-live="polite"></div>
-
-          <p class="comparison-title">累计数据</p>
-          <section class="cumulative-grid" aria-label="累计指标">
-            <div class="cumulative"><span>累计里程（公里）</span><strong id="distanceMetric">0.0</strong></div>
-            <div class="cumulative"><span>累计运动（次）</span><strong id="countMetric">0</strong></div>
-            <div class="cumulative"><span>累计时长</span><strong id="durationMetric">0 分</strong></div>
-            <div class="cumulative"><span>累计爬升（米）</span><strong id="elevationMetric">0</strong></div>
-          </section>
-        </section>
-
-        <h2 class="section-title"><span></span>运动表现</h2>
-        <section class="performance-card" aria-label="周期表现">
-          <div class="performance-tabs"><span id="paceMetricLabel">平均配速</span><span>平均距离</span><span>平均时长</span></div>
-          <div class="performance-values">
-            <div><small>本期平均</small><strong id="paceMetric">--</strong><span id="paceMetricUnit">/km</span></div>
-            <div><small>单次平均</small><strong id="averageDistanceMetric">0.0</strong><span>km</span></div>
-            <div><small>单次平均</small><strong id="averageDurationMetric">0 分</strong></div>
-          </div>
-        </section>
-
-        <p id="emptyMessage" class="empty-message" hidden></p>
-        <div id="warningBanner" class="warning-banner" role="status" hidden></div>
+        <section id="statsGrid" class="stats-grid" aria-label="已选运动统计"></section>
       </div>
     </main>
     <script src="visual-fixture.js"></script>

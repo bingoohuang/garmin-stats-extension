@@ -14,7 +14,7 @@
 
 * { box-sizing: border-box; letter-spacing: 0; }
 html, body { width: 420px; min-width: 420px; margin: 0; background: var(--page); color: var(--ink); }
-body[data-sport="cycling"] { --accent: #ff795e; --accent-dark: #a9402d; --accent-soft: #fff0ec; }
+html[data-column-count="2"], body[data-column-count="2"] { width: 800px; }
 button, a { font: inherit; }
 button { color: inherit; }
 h1, h2, p { margin: 0; }
@@ -39,11 +39,19 @@ h1 { font-size: 17px; line-height: 22px; font-weight: 720; }
 .context-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 16px 12px; }
 .sport-select { display: flex; align-items: center; gap: 5px; }
 .sport-select button { min-height: 36px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #626a67; font-size: 12px; font-weight: 650; cursor: pointer; }
-.sport-select button[aria-pressed="true"] { min-width: 88px; border-color: var(--accent-dark); color: #fff; background: var(--accent-dark); }
-.sport-select button span { margin-left: 3px; font-size: 9px; }
+.sport-select button[aria-pressed="true"]::before { content: "\2713"; margin-right: 5px; font-size: 10px; }
+.sport-select button[data-sport="running"][aria-pressed="true"] { border-color: #087a58; color: #fff; background: #087a58; }
+.sport-select button[data-sport="cycling"][aria-pressed="true"] { border-color: #a9402d; color: #fff; background: #a9402d; }
+.sport-select button:disabled { cursor: default; }
 .range-label { color: #66716c; font-size: 12px; font-weight: 600; }
 
-.stats-card, .performance-card { margin: 0 16px; border: 1px solid #eef1f0; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.stats-grid { display: grid; grid-template-columns: repeat(var(--column-count, 1), minmax(0, 1fr)); gap: 12px; margin: 0 16px; }
+.sport-column { --accent: #24ca91; --accent-dark: #087a58; --accent-soft: #e4f8f0; min-width: 0; }
+.sport-column[data-sport="cycling"] { --accent: #ff795e; --accent-dark: #a9402d; --accent-soft: #fff0ec; }
+.sport-column-heading { display: flex; align-items: center; gap: 7px; margin-bottom: 14px; }
+.sport-column-heading span { width: 4px; height: 16px; border-radius: 2px; background: var(--accent); }
+.sport-column-heading h2 { font-size: 14px; line-height: 20px; font-weight: 720; }
+.stats-card, .performance-card { border: 1px solid #eef1f0; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
 .stats-card { padding: 20px 18px 18px; }
 .summary-row, .chart-heading, .distance-line, .state-actions { display: flex; align-items: center; }
 .summary-row { justify-content: space-between; gap: 12px; }
@@ -66,7 +74,7 @@ h1 { font-size: 17px; line-height: 22px; font-weight: 720; }
 .bar-day[data-show-label="false"]::after { content: ""; }
 .bar-day.is-selected::after { color: var(--accent-dark); font-weight: 750; }
 .bar-rect { width: 100%; min-height: 2px; height: var(--bar-height); border-radius: 3px 3px 1px 1px; background: linear-gradient(180deg, #55e0ad, var(--accent)); opacity: .92; transition: height 180ms ease, opacity 120ms ease; }
-body[data-sport="cycling"] .bar-rect { background: linear-gradient(180deg, #ff9a82, var(--accent)); }
+.sport-column[data-sport="cycling"] .bar-rect { background: linear-gradient(180deg, #ff9a82, var(--accent)); }
 .bar-day.is-selected .bar-rect { opacity: 1; box-shadow: 0 0 0 1px var(--accent-soft); }
 .bar-day.is-future .bar-rect { background: #e8ecea; opacity: .55; }
 .chart-detail { min-height: 18px; margin-top: 9px; color: var(--accent-dark); font-size: 10px; font-weight: 650; text-align: center; }
@@ -77,7 +85,7 @@ body[data-sport="cycling"] .bar-rect { background: linear-gradient(180deg, #ff9a
 .cumulative span { display: block; color: #5e6763; font-size: 11px; line-height: 16px; }
 .cumulative strong { display: block; margin-top: 5px; font-family: "Arial Narrow", "Roboto Condensed", Impact, sans-serif; font-size: 25px; line-height: 29px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
-.section-title { display: flex; align-items: center; gap: 8px; margin: 20px 18px 10px; font-size: 14px; line-height: 20px; font-weight: 720; }
+.section-title { display: flex; align-items: center; gap: 8px; margin: 20px 2px 10px; font-size: 14px; line-height: 20px; font-weight: 720; }
 .section-title span { width: 4px; height: 16px; border-radius: 2px; background: var(--accent); }
 .performance-card { padding: 16px 14px; }
 .performance-tabs { display: grid; grid-template-columns: repeat(3, 1fr); padding-bottom: 13px; border-bottom: 1px solid var(--line); text-align: center; }
@@ -90,7 +98,8 @@ body[data-sport="cycling"] .bar-rect { background: linear-gradient(180deg, #ff9a
 .performance-values strong { display: inline-block; margin-top: 4px; font-size: 16px; line-height: 22px; font-weight: 760; font-variant-numeric: tabular-nums; }
 .performance-values span { margin-left: 2px; color: var(--muted); font-size: 9px; }
 
-.loading-view { margin: 0 16px; padding: 20px 18px; border-radius: 12px; background: #fff; }
+.loading-view { display: grid; grid-template-columns: repeat(var(--column-count, 1), minmax(0, 1fr)); gap: 12px; margin: 0 16px; }
+.loading-card { min-width: 0; padding: 20px 18px; border-radius: 12px; background: #fff; }
 .skeleton { border-radius: 6px; background: linear-gradient(90deg, #edf0ee 25%, #f7f8f7 50%, #edf0ee 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
 .skeleton-total { width: 54%; height: 48px; }
 .skeleton-chart { height: 190px; margin-top: 24px; }
@@ -105,6 +114,9 @@ body[data-sport="cycling"] .bar-rect { background: linear-gradient(180deg, #ff9a
 .empty-message, .warning-banner { margin: 12px 16px 0; padding: 10px 12px; border-radius: 8px; font-size: 11px; text-align: center; }
 .empty-message { color: var(--muted); background: #fff; }
 .warning-banner { color: #80530d; background: #fff3d9; }
+.column-error { display: flex; min-height: 420px; flex-direction: column; align-items: center; justify-content: center; padding: 32px; border: 1px solid #eef1f0; border-radius: 12px; background: #fff; box-shadow: var(--shadow); text-align: center; }
+.column-error h2 { font-size: 15px; }
+.column-error p { margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 17px; }
 
 button:focus-visible, a:focus-visible, .bar-chart:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
 [hidden] { display: none !important; }

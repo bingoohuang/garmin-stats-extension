@@ -1,4 +1,8 @@
 if (!globalThis.chrome?.runtime?.sendMessage) {
+  const requestedSports = new URLSearchParams(globalThis.location?.search || "").get("sports");
+  const fixtureSports = requestedSports
+    ?.split(",")
+    .filter((sport) => ["running", "cycling"].includes(sport));
   const daily = [
     ["2026-07-13", 11.06, 3980, 1],
     ["2026-07-14", 13.56, 5338, 1],
@@ -29,14 +33,14 @@ if (!globalThis.chrome?.runtime?.sendMessage) {
               endDate: "2026-07-19",
               today: "2026-07-14",
             },
-            totalDistanceKm: 24.62,
-            totalDurationSeconds: 9318,
-            count: 2,
-            activeDays: 2,
+            totalDistanceKm: payload.sport === "cycling" ? 67.31 : 24.62,
+            totalDurationSeconds: payload.sport === "cycling" ? 16322 : 9318,
+            count: payload.sport === "cycling" ? 5 : 2,
+            activeDays: payload.sport === "cycling" ? 4 : 2,
             calories: 1760,
             elevationGain: 55,
             averagePaceSecondsPerKm: 379,
-            averageSpeedKmh: 9.5,
+            averageSpeedKmh: payload.sport === "cycling" ? 14.8 : 9.5,
             maxDailyDistanceKm: 13.56,
             daily,
           },
@@ -45,7 +49,13 @@ if (!globalThis.chrome?.runtime?.sendMessage) {
     },
     storage: {
       local: {
-        get: async () => ({ preferences: { sport: "running", period: "week" } }),
+        get: async () => ({
+          preferences: {
+            sports: fixtureSports?.length ? fixtureSports : ["running"],
+            sport: fixtureSports?.[0] || "running",
+            period: "week",
+          },
+        }),
         set: async () => {},
       },
     },
