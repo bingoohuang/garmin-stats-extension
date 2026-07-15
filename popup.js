@@ -309,7 +309,6 @@ function renderResults(entries) {
 }
 
 function renderError(error) {
-  const isAuth = error?.code === "AUTH_REQUIRED";
   const needsTab = [
     "GARMIN_TAB_REQUIRED",
     "GARMIN_TAB_NOT_READY",
@@ -317,20 +316,14 @@ function renderError(error) {
     "TAB_FETCH_FAILED",
     "TAB_ORIGIN_MISMATCH",
   ].includes(error?.code);
-  elements.errorTitle.textContent = isAuth
-    ? "请先登录 Garmin Connect"
-    : needsTab
-      ? "请打开 Garmin 活动页"
-      : "暂时无法读取数据";
-  elements.errorMessage.textContent = isAuth
-    ? "登录 Garmin Connect China 后返回此处重试。"
-    : error?.message || "请检查网络后重试。";
-  elements.loginButton.hidden = !(isAuth || needsTab);
-  elements.connectionStatus.textContent = isAuth
-    ? "Garmin Connect China · 未登录"
-    : needsTab
-      ? "Garmin Connect China · 等待活动页"
-      : "Garmin Connect China · 连接失败";
+  elements.errorTitle.textContent = needsTab
+    ? "请打开 Garmin 活动页"
+    : "暂时无法读取数据";
+  elements.errorMessage.textContent = error?.message || "请检查页面状态后重试。";
+  elements.loginButton.hidden = !needsTab;
+  elements.connectionStatus.textContent = needsTab
+    ? "Garmin Connect China · 等待活动页"
+    : "Garmin Connect China · 连接失败";
   setView("error");
   elements.errorView.focus();
 }
@@ -342,7 +335,7 @@ async function requestSport(sport, force) {
       payload: { sport, period: state.period, force },
     });
     return response?.ok
-      ? { sport, result: response.data }
+      ? { sport, result: response.data, warning: response.data?.warning || "" }
       : { sport, error: response?.error || { message: "读取 Garmin 数据失败" } };
   } catch (error) {
     return { sport, error: { message: error?.message || "扩展后台服务未响应" } };
@@ -372,8 +365,7 @@ async function requestStats(force = false) {
         return entry;
       }
       const cachedResult = state.results.get(resultKey(entry.sport));
-      const canKeepCurrent =
-        force && cachedResult && entry.error?.code !== "AUTH_REQUIRED";
+      const canKeepCurrent = force && cachedResult;
       return canKeepCurrent
         ? {
             sport: entry.sport,
