@@ -294,7 +294,11 @@
           payload: { sport, period: state.period, force },
         });
         return response?.ok
-          ? { sport, summary: response.data.summary }
+          ? {
+              sport,
+              summary: response.data.summary,
+              warning: response.data?.warning || "",
+            }
           : { sport, error: response?.error || { message: "读取 Garmin 数据失败" } };
       } catch (error) {
         return { sport, error: { message: error?.message || "读取 Garmin 数据失败" } };
@@ -326,7 +330,7 @@
             return entry;
           }
           const cachedSummary = state.summaries.get(summaryKey(entry.sport));
-          return force && cachedSummary && entry.error?.code !== "AUTH_REQUIRED"
+          return force && cachedSummary
             ? {
                 sport: entry.sport,
                 summary: cachedSummary,

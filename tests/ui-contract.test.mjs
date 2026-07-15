@@ -32,6 +32,18 @@ test("manifest installs the Garmin activity-page statistics widget", async () =>
   ]);
 });
 
+test("runtime reads current page data instead of Garmin activity APIs", async () => {
+  const background = await readFile(new URL("background.js", projectRoot), "utf8");
+  const garminTab = await readFile(new URL("lib/garmin-tab.js", projectRoot), "utf8");
+  const runtimeCode = `${background}\n${garminTab}`;
+
+  assert.match(runtimeCode, /readActivityRowsInGarminTab/);
+  assert.doesNotMatch(runtimeCode, /activitylist-service/);
+  assert.doesNotMatch(runtimeCode, /fetchActivityPage/);
+  assert.doesNotMatch(runtimeCode, /world:\s*["']MAIN["']/);
+  assert.doesNotMatch(runtimeCode, /GarminApi/);
+});
+
 test("activity page adds linked activity ids before the distance metric", async () => {
   const widget = await readFile(new URL("activity-widget.js", projectRoot), "utf8");
   assert.match(widget, /data-garmin-stats-activity-id/);

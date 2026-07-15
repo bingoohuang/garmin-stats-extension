@@ -1,23 +1,15 @@
 import { getPeriodRange } from "./lib/dates.js";
-import { fetchGarminActivities, GarminApiError } from "./lib/garmin-api.js";
-import { fetchGarminActivitiesViaTab } from "./lib/garmin-tab.js";
+import { fetchGarminActivitiesViaTabWithMetadata } from "./lib/garmin-tab.js";
 import { normalizeActivities, SPORTS, summarizeActivities } from "./lib/stats.js";
 
 async function loadActivities(query) {
-  try {
-    return {
-      activities: await fetchGarminActivities(query),
-      source: "extension",
-    };
-  } catch (error) {
-    if (!(error instanceof GarminApiError) || error.code !== "AUTH_REQUIRED") {
-      throw error;
-    }
-    return {
-      activities: await fetchGarminActivitiesViaTab(query),
-      source: "garmin-tab",
-    };
-  }
+  const tabResult = await fetchGarminActivitiesViaTabWithMetadata(query);
+  return {
+    activities: tabResult.activities,
+    source: tabResult.source,
+    sourceDetail: tabResult.sourceDetail,
+    warning: tabResult.warning,
+  };
 }
 
 async function getStats({ sport, period }) {
@@ -28,7 +20,6 @@ async function getStats({ sport, period }) {
   const now = new Date();
   const range = getPeriodRange(period, now);
   const result = await loadActivities({
-    sport: SPORTS[sport].apiType,
     startDate: range.startDate,
     endDate: range.queryEndDate,
   });
@@ -37,6 +28,8 @@ async function getStats({ sport, period }) {
     summary: summarizeActivities(activities, sport, period, now),
     fetchedAt: Date.now(),
     source: result.source,
+    sourceDetail: result.sourceDetail,
+    warning: result.warning,
   };
 }
 
@@ -51,7 +44,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({
         ok: false,
         error: {
-          code: error instanceof GarminApiError ? error.code : "FETCH_FAILED",
+          code: error?.code || "FETCH_FAILED",
           message: error?.message || "读取 Garmin 数据失败",
         },
       }),
